@@ -21,6 +21,7 @@ def upgrade() -> None:
     Base.metadata.create_all(bind=bind)
 
     if bind.dialect.name == "postgresql":
+        # Executed as separate statements: psycopg 3 rejects multiple commands in one prepared statement.
         op.execute(
             """
             CREATE OR REPLACE FUNCTION prevent_audit_event_mutation()
@@ -28,12 +29,15 @@ def upgrade() -> None:
             BEGIN
                 RAISE EXCEPTION 'Audit events are immutable and cannot be modified or deleted.';
             END;
-            $$ LANGUAGE plpgsql;
-
-            DROP TRIGGER IF EXISTS trg_prevent_audit_mutation ON audit_events;
+            $$ LANGUAGE plpgsql
+            """
+        )
+        op.execute("DROP TRIGGER IF EXISTS trg_prevent_audit_mutation ON audit_events")
+        op.execute(
+            """
             CREATE TRIGGER trg_prevent_audit_mutation
             BEFORE UPDATE OR DELETE ON audit_events
-            FOR EACH ROW EXECUTE FUNCTION prevent_audit_event_mutation();
+            FOR EACH ROW EXECUTE FUNCTION prevent_audit_event_mutation()
             """
         )
 

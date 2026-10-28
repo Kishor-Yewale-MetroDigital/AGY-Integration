@@ -1,0 +1,55 @@
+name: Cloud SQL Pay-When-In-Use Power Schedule
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Start or Stop the Cloud SQL PostgreSQL instance"
+        required: true
+        default: "stop"
+        type: choice
+        options:
+          - start
+          - stop
+  schedule:
+    # Automatically stop Cloud SQL every evening at 14:30 UTC (20:00 IST) to prevent idle compute charges
+    - cron: "30 14 * * *"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: cf-hackathon-ai-poc-testin-b1
+  CLOUDSQL_INSTANCE: talentflow-pg-on-demand
+
+jobs:
+  toggle-cloudsql:
+    name: Toggle Cloud SQL Activation Policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to Google Cloud via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CICD_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Apply On-Demand Activation Policy
+        run: |
+          ACTION="${{ github.event.inputs.action || 'stop' }}"
+          if [ "$ACTION" = "start" ]; then
+            echo "Starting Cloud SQL instance ${{ env.CLOUDSQL_INSTANCE }} (activation-policy=ALWAYS)..."
+            gcloud sql instances patch ${{ env.CLOUDSQL_INSTANCE }} \
+              --project="${{ env.GCP_PROJECT_ID }}" \
+              --activation-policy=ALWAYS \
+              --quiet
+          else
+            echo "Stopping Cloud SQL instance ${{ env.CLOUDSQL_INSTANCE }} (activation-policy=NEVER -> $0 compute billing)..."
+            gcloud sql instances patch ${{ env.CLOUDSQL_INSTANCE }} \
+              --project="${{ env.GCP_PROJECT_ID }}" \
+              --activation-policy=NEVER \
+              --quiet
+          fi

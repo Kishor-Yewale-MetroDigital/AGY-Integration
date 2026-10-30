@@ -149,7 +149,7 @@ export function MetroHeader({
             </span>
           </h1>
           <div style={{ fontSize: "12px", color: "#4f4f4f", marginTop: "2px", fontWeight: 600 }}>
-            METRO Global Solution Center • Cloud SQL PostgreSQL + BigQuery Warehouse (
+            <span>TalentFlow — Enterprise Hiring &amp; People Committee Platform</span> • METRO Global Solution Center • Cloud SQL PostgreSQL + BigQuery Warehouse (
             <code style={{ color: METRO_COLORS.primaryNavy }}>talentflow_analytics</code>) • RBAC &amp; SoD Enforced
           </div>
         </div>

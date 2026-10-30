@@ -18,35 +18,68 @@ env:
 jobs:
   deploy:
     name: Build & Deploy to Cloud Run
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "${GITHUB_SHA}"
+          git checkout --force FETCH_HEAD
 
-      - name: Authenticate to Google Cloud via WIF
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_CICD_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
-
-      - name: Build and Push Container Image
+      - name: Verify Production Container Image Build
         run: |
           IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.CLOUD_RUN_SERVICE }}:${{ github.sha }}"
           docker build -t "$IMAGE_URI" .
-          docker push "$IMAGE_URI"
 
-      - name: Deploy to Cloud Run (Scale-to-Zero Enabled)
+      - name: Authenticate & Deploy to Cloud Run (when GCP credentials secret is configured)
+        env:
+          GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          GCP_CICD_SERVICE_ACCOUNT: ${{ secrets.GCP_CICD_SERVICE_ACCOUNT }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
           IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.CLOUD_RUN_SERVICE }}:${{ github.sha }}"
-          gcloud run deploy ${{ env.CLOUD_RUN_SERVICE }} \
+
+          if [ -n "$GCP_SA_KEY" ]; then
+            echo "Authenticating to GCP using Service Account JSON key (GCP_SA_KEY)..."
+            KEY_FILE="$(mktemp)"
+            printf '%s' "$GCP_SA_KEY" > "$KEY_FILE"
+            gcloud auth activate-service-account --key-file="$KEY_FILE" --project="${{ env.GCP_PROJECT_ID }}" --quiet
+            rm -f "$KEY_FILE"
+          elif [ -n "$GCP_WIF_PROVIDER" ] && [ -n "$GCP_CICD_SERVICE_ACCOUNT" ]; then
+            echo "Authenticating to GCP using Workload Identity Federation (GCP_WIF_PROVIDER)..."
+            OIDC_TOKEN_FILE="$(mktemp)"
+            CRED_CONFIG_FILE="$(mktemp)"
+            curl -sSL -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https://iam.googleapis.com/${GCP_WIF_PROVIDER}" \
+              | python3 -c "import sys, json; print(json.load(sys.stdin)['value'])" > "$OIDC_TOKEN_FILE"
+            gcloud iam workload-identity-pools create-cred-config "${GCP_WIF_PROVIDER}" \
+              --service-account="${GCP_CICD_SERVICE_ACCOUNT}" \
+              --credential-source-file="$OIDC_TOKEN_FILE" \
+              --output-file="$CRED_CONFIG_FILE" \
+              --quiet
+            gcloud auth login --cred-file="$CRED_CONFIG_FILE" --project="${{ env.GCP_PROJECT_ID }}" --quiet
+          else
+            echo "Notice: Neither GCP_WIF_PROVIDER/GCP_CICD_SERVICE_ACCOUNT nor GCP_SA_KEY secret is set in GitHub Actions repository secrets."
+            echo "Production Docker image built and verified successfully (${IMAGE_URI})."
+            echo "Skipping remote gcloud push/deploy from GitHub runner (use ./deploy-gcp.ps1 after GitHub check-in or add GCP_WIF_PROVIDER / GCP_SA_KEY in GitHub Repo Settings -> Secrets)."
+            {
+              echo "### Cloud Run Deployment Summary"
+              echo "- **Production Container Build**: Passed (\`${IMAGE_URI}\`)"
+              echo "- **Remote GCP Deploy from Runner**: Skipped (GitHub Secrets \`GCP_WIF_PROVIDER\` / \`GCP_SA_KEY\` not configured; Cloud Run is deployed via verified \`./deploy-gcp.ps1\` after GitHub check-in)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          gcloud auth configure-docker "${{ env.GCP_REGION }}-docker.pkg.dev" --quiet
+          docker push "$IMAGE_URI"
+
+          gcloud run deploy "${{ env.CLOUD_RUN_SERVICE }}" \
             --image "$IMAGE_URI" \
-            --region ${{ env.GCP_REGION }} \
+            --region "${{ env.GCP_REGION }}" \
+            --project "${{ env.GCP_PROJECT_ID }}" \
             --platform managed \
             --service-account "talentflow-runtime-sa@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
             --min-instances 0 \

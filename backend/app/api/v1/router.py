@@ -97,6 +97,23 @@ def create_user_endpoint(
 ):
     existing = db.scalars(select(User).where(User.email == payload.email)).first()
     if existing:
+        if (
+            existing.role == Role.ADMIN.value
+            and existing.is_active
+            and (payload.role != Role.ADMIN.value or not payload.is_active)
+        ):
+            other_active_admins = db.scalars(
+                select(User).where(
+                    User.role == Role.ADMIN.value,
+                    User.is_active.is_(True),
+                    User.id != existing.id,
+                )
+            ).first()
+            if not other_active_admins:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot suspend or demote the last active Administrator.",
+                )
         prev_state = _serialize_user(existing)
         existing.full_name = payload.full_name.strip()
         existing.role = payload.role
@@ -157,6 +174,30 @@ def update_user_endpoint(
 
     prev_state = _serialize_user(target_user)
     dump = payload.model_dump(exclude_unset=True)
+    next_role = dump.get("role", target_user.role) or target_user.role
+    next_active = (
+        dump["is_active"]
+        if "is_active" in dump and dump["is_active"] is not None
+        else target_user.is_active
+    )
+    if (
+        target_user.role == Role.ADMIN.value
+        and target_user.is_active
+        and (next_role != Role.ADMIN.value or not next_active)
+    ):
+        other_active_admins = db.scalars(
+            select(User).where(
+                User.role == Role.ADMIN.value,
+                User.is_active.is_(True),
+                User.id != target_user.id,
+            )
+        ).first()
+        if not other_active_admins:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot suspend or demote the last active Administrator.",
+            )
+
     if "full_name" in dump and dump["full_name"] is not None:
         target_user.full_name = dump["full_name"].strip()
     if "role" in dump and dump["role"] is not None:
@@ -503,6 +544,20 @@ def update_approval_rule(
 
     prev_state = _serialize_rule(rule)
     dump = payload.model_dump(exclude_unset=True)
+    if "rule_name" in dump and dump["rule_name"] is not None:
+        clean_name = dump["rule_name"].strip()
+        conflict = db.scalars(
+            select(ApprovalRule).where(
+                ApprovalRule.rule_name == clean_name,
+                ApprovalRule.id != rule_id,
+            )
+        ).first()
+        if conflict:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"An approval rule named '{clean_name}' already exists.",
+            )
+
     for field_name, val in dump.items():
         if field_name == "rule_name" and val is not None:
             setattr(rule, field_name, val.strip())

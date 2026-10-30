@@ -197,8 +197,8 @@ export function MetroHeader({
             <option value="usr-committee">Priya Menon (COMMITTEE_MEMBER)</option>
           ) : (
             users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.full_name} [{u.role}]
+              <option key={u.id} value={u.id} disabled={u.is_active === false}>
+                {u.full_name} [{u.role}]{u.is_active === false ? " (Suspended)" : ""}
               </option>
             ))
           )}

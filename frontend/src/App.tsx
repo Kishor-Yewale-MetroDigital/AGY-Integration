@@ -61,6 +61,54 @@ const STAGE_FALLBACK_USER: Record<string, string> = {
   COMMITTEE_PENDING: "usr-admin",
 };
 
+const STAGE_ALLOWED_ROLES: Record<string, string[]> = {
+  MANAGER_REVIEW: ["HIRING_MANAGER", "HRBP", "ADMIN"],
+  FINANCE_REVIEW: ["FINANCE_REVIEWER", "ADMIN"],
+  COMMITTEE_PENDING: ["COMMITTEE_MEMBER", "ADMIN"],
+};
+
+function resolveAdminActorId(users: User[], currentUserId: string): string {
+  const current = users.find((u) => u.id === currentUserId);
+  if (
+    current &&
+    current.is_active !== false &&
+    ["ADMIN", "COMMITTEE_MEMBER", "HRBP"].includes(current.role)
+  ) {
+    return current.id;
+  }
+  const activeAdmin = users.find((u) => u.is_active !== false && u.role === "ADMIN");
+  if (activeAdmin) return activeAdmin.id;
+  const activeGov = users.find(
+    (u) => u.is_active !== false && ["COMMITTEE_MEMBER", "HRBP"].includes(u.role)
+  );
+  return activeGov?.id || "usr-admin";
+}
+
+function resolveWritableActorId(
+  users: User[],
+  currentUserId: string,
+  autoSelect: boolean,
+  preferredFallbackId: string
+): string {
+  const current = users.find((u) => u.id === currentUserId);
+  const isReadOnlyOrInactive =
+    !current ||
+    current.is_active === false ||
+    current.role === "EXEC_READONLY" ||
+    currentUserId === "usr-exec";
+  if (!isReadOnlyOrInactive || !autoSelect) {
+    return currentUserId;
+  }
+  const preferred = users.find((u) => u.id === preferredFallbackId && u.is_active !== false);
+  if (preferred && preferred.role !== "EXEC_READONLY") {
+    return preferred.id;
+  }
+  const activeWritable = users.find(
+    (u) => u.is_active !== false && u.role !== "EXEC_READONLY"
+  );
+  return activeWritable?.id || preferredFallbackId;
+}
+
 export function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
   const [users, setUsers] = useState<User[]>([]);
@@ -214,8 +262,12 @@ export function App() {
     setSuccessBanner(null);
     try {
       const selectedDept = departments.find((d) => d.id === deptId);
-      const effectiveCreatorId =
-        currentUserId === "usr-exec" && autoSelectStageApprover ? "usr-creator" : currentUserId;
+      const effectiveCreatorId = resolveWritableActorId(
+        users,
+        currentUserId,
+        autoSelectStageApprover,
+        "usr-creator"
+      );
 
       const created = await createHiringRequest(
         {
@@ -265,8 +317,12 @@ export function App() {
     setErrorBanner(null);
     setSuccessBanner(null);
     try {
-      const effectiveActor =
-        currentUserId === "usr-exec" && autoSelectStageApprover ? "usr-creator" : currentUserId;
+      const effectiveActor = resolveWritableActorId(
+        users,
+        currentUserId,
+        autoSelectStageApprover,
+        "usr-creator"
+      );
       const submitted = await submitHiringRequest(req.id, effectiveActor);
       setSuccessBanner(
         `Submitted ${submitted.request_code} to workflow → Current stage: ${submitted.status}.`
@@ -291,8 +347,12 @@ export function App() {
     setErrorBanner(null);
     setSuccessBanner(null);
     try {
-      const effectiveActor =
-        currentUserId === "usr-exec" && autoSelectStageApprover ? "usr-creator" : currentUserId;
+      const effectiveActor = resolveWritableActorId(
+        users,
+        currentUserId,
+        autoSelectStageApprover,
+        "usr-creator"
+      );
       const updated = await updateHiringRequest(
         editingRequest.id,
         {
@@ -328,18 +388,14 @@ export function App() {
     }
 
     const currentUser = users.find((u) => u.id === currentUserId);
-    const stageAllowedRoles: Record<string, string[]> = {
-      MANAGER_REVIEW: ["HIRING_MANAGER", "HRBP", "ADMIN"],
-      FINANCE_REVIEW: ["FINANCE_REVIEWER", "ADMIN"],
-      COMMITTEE_PENDING: ["COMMITTEE_MEMBER", "ADMIN"],
-    };
-    const allowed = stageAllowedRoles[activeStage] || [];
+    const allowed = STAGE_ALLOWED_ROLES[activeStage] || [];
     const hasDelegation = delegations.some(
       (d) => d.is_active && d.stage_name === activeStage && d.to_user_id === currentUserId
     );
 
     if (
       currentUser &&
+      currentUser.is_active !== false &&
       (allowed.includes(currentUser.role) || hasDelegation) &&
       req.request_owner_id !== currentUserId
     ) {
@@ -347,8 +403,19 @@ export function App() {
     }
 
     let targetUserId = STAGE_DEFAULT_USER[activeStage] || "usr-committee";
-    if (targetUserId === req.request_owner_id) {
-      targetUserId = STAGE_FALLBACK_USER[activeStage] || "usr-admin";
+    const defaultCandidate = users.find((u) => u.id === targetUserId);
+    if (
+      targetUserId === req.request_owner_id ||
+      (defaultCandidate &&
+        (defaultCandidate.is_active === false || !allowed.includes(defaultCandidate.role)))
+    ) {
+      const dynamicMatch = users.find(
+        (u) =>
+          u.is_active !== false &&
+          allowed.includes(u.role) &&
+          u.id !== req.request_owner_id
+      );
+      targetUserId = dynamicMatch?.id || STAGE_FALLBACK_USER[activeStage] || "usr-admin";
     }
     return {
       approverId: targetUserId,
@@ -457,8 +524,12 @@ export function App() {
     setErrorBanner(null);
     setSuccessBanner(null);
     try {
-      const effectiveActor =
-        currentUserId === "usr-exec" && autoSelectStageApprover ? "usr-hrbp" : currentUserId;
+      const effectiveActor = resolveWritableActorId(
+        users,
+        currentUserId,
+        autoSelectStageApprover,
+        "usr-hrbp"
+      );
       const updated = await recordPositionOutcome(
         reqId,
         posId,
@@ -525,7 +596,10 @@ export function App() {
     setErrorBanner(null);
     setSuccessBanner(null);
     try {
-      const actorId = STAGE_DEFAULT_USER[delegateStage] || currentUserId;
+      let actorId = STAGE_DEFAULT_USER[delegateStage] || currentUserId;
+      if (actorId === delegateToUserId) {
+        actorId = STAGE_FALLBACK_USER[delegateStage] || resolveAdminActorId(users, currentUserId);
+      }
       const d = await createDelegation(
         {
           to_user_id: delegateToUserId,
@@ -548,6 +622,7 @@ export function App() {
     setErrorBanner(null);
     setSuccessBanner(null);
     try {
+      const adminActorId = resolveAdminActorId(users, currentUserId);
       const normalizedGrade =
         !newRuleMinGrade || newRuleMinGrade.toUpperCase() === "ANY" ? null : newRuleMinGrade;
       const created = await createApprovalRule(
@@ -560,7 +635,7 @@ export function App() {
           requires_committee_review: true,
           sla_hours: Number(newRuleSla) || 24,
         },
-        "usr-admin"
+        adminActorId
       );
       setSuccessBanner(
         `Saved configurable approval rule: ${created.rule_name} (Min Grade: ${
@@ -579,11 +654,12 @@ export function App() {
     setErrorBanner(null);
     setSuccessBanner(null);
     try {
+      const adminActorId = resolveAdminActorId(users, currentUserId);
       const nextActive = rule.is_active === false;
       const updated = await updateApprovalRule(
         rule.id,
         { is_active: nextActive },
-        "usr-admin"
+        adminActorId
       );
       setSuccessBanner(
         `Rule "${updated.rule_name}" is now ${updated.is_active ? "ACTIVE" : "PAUSED"}.`
@@ -598,7 +674,8 @@ export function App() {
     setErrorBanner(null);
     setSuccessBanner(null);
     try {
-      const res = await deleteApprovalRule(ruleId, "usr-admin");
+      const adminActorId = resolveAdminActorId(users, currentUserId);
+      const res = await deleteApprovalRule(ruleId, adminActorId);
       setSuccessBanner(`Removed governance approval rule: "${res.rule_name}".`);
       await refreshAll();
     } catch (err) {
@@ -611,6 +688,7 @@ export function App() {
     setErrorBanner(null);
     setSuccessBanner(null);
     try {
+      const adminActorId = resolveAdminActorId(users, currentUserId);
       const created = await createUser(
         {
           full_name: newUserName,
@@ -620,7 +698,7 @@ export function App() {
           business_unit: newUserBusinessUnit,
           is_active: true,
         },
-        "usr-admin"
+        adminActorId
       );
       setSuccessBanner(
         `User "${created.full_name}" (${created.email}) provisioned with role & rights: [${created.role}].`
@@ -635,7 +713,8 @@ export function App() {
     setErrorBanner(null);
     setSuccessBanner(null);
     try {
-      const updated = await updateUser(userId, { role }, "usr-admin");
+      const adminActorId = resolveAdminActorId(users, currentUserId);
+      const updated = await updateUser(userId, { role }, adminActorId);
       setSuccessBanner(
         `Updated role & workflow rights for ${updated.full_name} (${updated.email}) → [${updated.role}].`
       );
@@ -650,7 +729,15 @@ export function App() {
     setSuccessBanner(null);
     try {
       const nextActive = user.is_active === false;
-      const updated = await updateUser(user.id, { is_active: nextActive }, "usr-admin");
+      const remainingUsers = nextActive
+        ? users
+        : users.filter((u) => u.id !== user.id);
+      const adminActorId = resolveAdminActorId(remainingUsers, currentUserId);
+      const updated = await updateUser(user.id, { is_active: nextActive }, adminActorId);
+      if (!nextActive && user.id === currentUserId) {
+        setCurrentUserId(adminActorId);
+        setActiveUserId(adminActorId);
+      }
       setSuccessBanner(
         `Account status for ${updated.full_name} (${updated.email}) set to ${
           updated.is_active ? "ACTIVE" : "SUSPENDED"

@@ -571,6 +571,126 @@ def test_scenario_21_user_administration_add_user_and_assign_rights(client):
     assert update_role_res.status_code == 200
     assert update_role_res.json()["role"] == "COMMITTEE_MEMBER"
 
+    # Suspend the user and verify suspended user cannot make authenticated API calls (401)
+    suspend_res = client.patch(
+        f"/api/v1/users/{user_id}",
+        json={"is_active": False},
+        headers={"X-User-Id": "usr-admin"},
+    )
+    assert suspend_res.status_code == 200
+    assert suspend_res.json()["is_active"] is False
+
+    denied_res = client.get(
+        "/api/v1/requests",
+        headers={"X-User-Id": user_id},
+    )
+    assert denied_res.status_code == 401
+
+    # Re-activate user via idempotent POST /api/v1/users
+    reactivate_res = client.post(
+        "/api/v1/users",
+        json={
+            "email": "neha.kulkarni@metro-gsc.in",
+            "full_name": "Neha Kulkarni",
+            "role": "COMMITTEE_MEMBER",
+            "business_unit": "Digital & Technology",
+            "department_id": "dept-eng",
+            "is_active": True,
+        },
+        headers={"X-User-Id": "usr-admin"},
+    )
+    assert reactivate_res.status_code == 201
+    assert reactivate_res.json()["id"] == user_id
+    assert reactivate_res.json()["is_active"] is True
+
+    # Prevent suspending or demoting the last active ADMIN
+    demote_admin_res = client.patch(
+        "/api/v1/users/usr-admin",
+        json={"role": "EXEC_READONLY"},
+        headers={"X-User-Id": "usr-admin"},
+    )
+    assert demote_admin_res.status_code == 400
+    assert "last active Administrator" in demote_admin_res.json()["detail"]
+
+    suspend_admin_res = client.patch(
+        "/api/v1/users/usr-admin",
+        json={"is_active": False},
+        headers={"X-User-Id": "usr-admin"},
+    )
+    assert suspend_admin_res.status_code == 400
+    assert "last active Administrator" in suspend_admin_res.json()["detail"]
+
+    # Verify rule rename conflict returns 409 instead of 500 IntegrityError
+    rule_a = client.post(
+        "/api/v1/approvals/rules",
+        json={
+            "rule_name": "Rule Alpha Unique Check",
+            "min_grade": "L5",
+            "min_total_cost": "1000000.00",
+            "requires_manager_review": True,
+            "requires_finance_review": False,
+            "requires_committee_review": True,
+            "sla_hours": 24,
+        },
+        headers={"X-User-Id": "usr-admin"},
+    ).json()
+    rule_b = client.post(
+        "/api/v1/approvals/rules",
+        json={
+            "rule_name": "Rule Beta Unique Check",
+            "min_grade": "L6",
+            "min_total_cost": "2000000.00",
+            "requires_manager_review": True,
+            "requires_finance_review": True,
+            "requires_committee_review": True,
+            "sla_hours": 24,
+        },
+        headers={"X-User-Id": "usr-admin"},
+    ).json()
+    rename_conflict = client.patch(
+        f"/api/v1/approvals/rules/{rule_b['id']}",
+        json={"rule_name": "Rule Alpha Unique Check"},
+        headers={"X-User-Id": "usr-admin"},
+    )
+    assert rename_conflict.status_code == 409
+    client.delete(f"/api/v1/approvals/rules/{rule_a['id']}", headers={"X-User-Id": "usr-admin"})
+    client.delete(f"/api/v1/approvals/rules/{rule_b['id']}", headers={"X-User-Id": "usr-admin"})
+
+    # Verify idempotent delegation upsert and self-delegation guard
+    self_del_res = client.post(
+        "/api/v1/approvals/delegations",
+        json={
+            "to_user_id": "usr-committee",
+            "stage_name": "COMMITTEE_PENDING",
+            "reason": "Invalid self delegation attempt",
+        },
+        headers={"X-User-Id": "usr-committee"},
+    )
+    assert self_del_res.status_code == 400
+
+    del_res_1 = client.post(
+        "/api/v1/approvals/delegations",
+        json={
+            "to_user_id": "usr-hrbp",
+            "stage_name": "COMMITTEE_PENDING",
+            "reason": "Authorized backup coverage during Q4 global talent review.",
+        },
+        headers={"X-User-Id": "usr-committee"},
+    )
+    assert del_res_1.status_code == 201
+    del_res_2 = client.post(
+        "/api/v1/approvals/delegations",
+        json={
+            "to_user_id": "usr-hrbp",
+            "stage_name": "COMMITTEE_PENDING",
+            "reason": "Updated Q4 backup coverage reason.",
+        },
+        headers={"X-User-Id": "usr-committee"},
+    )
+    assert del_res_2.status_code == 201
+    assert del_res_2.json()["id"] == del_res_1.json()["id"]
+    assert del_res_2.json()["reason"] == "Updated Q4 backup coverage reason."
+
     # Verify audit trail recorded CREATE_USER and UPDATE_USER_RIGHTS
     audits = client.get(
         f"/api/v1/audit-events?entity_id={user_id}",

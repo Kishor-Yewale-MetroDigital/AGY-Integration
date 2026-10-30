@@ -467,11 +467,13 @@ export function CommitteeQueueTab({
                   flex: 1,
                 }}
               >
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    Delegate To: {u.full_name} [{u.role}]
-                  </option>
-                ))}
+                {users
+                  .filter((u) => u.is_active !== false)
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      Delegate To: {u.full_name} [{u.role}]
+                    </option>
+                  ))}
               </select>
             </div>
             <div style={{ display: "flex", gap: "10px" }}>

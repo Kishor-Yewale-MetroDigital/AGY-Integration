@@ -310,15 +310,58 @@ def create_delegation(
     payload: ApprovalDelegationCreate,
     actor: User,
 ) -> ApprovalDelegation:
+    if actor.id == payload.to_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delegate approval authority to yourself.",
+        )
+
     target_user = db.get(User, payload.to_user_id)
     if not target_user or not target_user.is_active:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delegate target user not found.")
+
+    existing = db.scalars(
+        select(ApprovalDelegation).where(
+            ApprovalDelegation.from_user_id == actor.id,
+            ApprovalDelegation.to_user_id == payload.to_user_id,
+            ApprovalDelegation.stage_name == payload.stage_name,
+        )
+    ).first()
+    if existing:
+        prev_state = {
+            "from_user_id": existing.from_user_id,
+            "to_user_id": existing.to_user_id,
+            "stage_name": existing.stage_name,
+            "reason": existing.reason,
+            "is_active": existing.is_active,
+        }
+        existing.reason = payload.reason.strip()
+        existing.is_active = True
+        db.flush()
+        record_audit_event(
+            db,
+            entity_type="ApprovalDelegation",
+            entity_id=existing.id,
+            actor=actor,
+            action="UPDATE_DELEGATION",
+            previous_state=prev_state,
+            new_state={
+                "from_user_id": existing.from_user_id,
+                "to_user_id": existing.to_user_id,
+                "stage_name": existing.stage_name,
+                "reason": existing.reason,
+                "is_active": existing.is_active,
+            },
+        )
+        db.commit()
+        db.refresh(existing)
+        return existing
 
     delegation = ApprovalDelegation(
         from_user_id=actor.id,
         to_user_id=payload.to_user_id,
         stage_name=payload.stage_name,
-        reason=payload.reason,
+        reason=payload.reason.strip(),
         is_active=True,
     )
     db.add(delegation)
@@ -334,7 +377,7 @@ def create_delegation(
             "from_user_id": actor.id,
             "to_user_id": payload.to_user_id,
             "stage_name": payload.stage_name,
-            "reason": payload.reason,
+            "reason": delegation.reason,
         },
     )
     db.commit()

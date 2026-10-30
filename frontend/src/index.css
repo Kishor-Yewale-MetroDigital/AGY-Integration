@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Nunito:wght@300;400;500;600;700;800;900&display=swap');
+
+:root {
+  --metro-navy: #003B7E;
+  --metro-navy-dark: #004181;
+  --metro-gold: #f9ae00;
+  --metro-cyan: #0089cb;
+  --metro-cyan-alt: #1980cd;
+  --metro-body: #323232;
+  --metro-muted: #4f4f4f;
+  --metro-border: #D1D1D1;
+  --metro-table-head: rgba(0, 59, 126, 0.1);
+  --metro-active-bg: #EBFBF8;
+  --metro-grand-bg: #dcf1ff;
+}
+
+* {
+  box-sizing: border-box;
+  font-family: 'Nunito', sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: 'Nunito', sans-serif !important;
+  color: #323232;
+  background-color: #f4f7fb;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Manrope', sans-serif !important;
+  font-weight: 700 !important;
+  color: #003B7E;
+  letter-spacing: -0.01em;
+}
+
+.pri-color {
+  color: #003B7E !important;
+}
+.pri-bg-color {
+  background-color: #003B7E !important;
+}
+.sec-color {
+  color: #f9ae00 !important;
+}
+.sec-bg-color {
+  background-color: #f9ae00 !important;
+}
+.ter-color {
+  color: #0089cb !important;
+}
+.ter-bg-color {
+  background-color: #0089cb !important;
+}
+
+input:not([type="checkbox"]),
+select,
+textarea {
+  font-family: 'Nunito', sans-serif;
+  border: 2px solid #D1D1D1 !important;
+  border-radius: 8px !important;
+  color: #323232;
+  background-color: #ffffff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:not([type="checkbox"]):focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: #003B7E !important;
+  box-shadow: 0 0 0 3px rgba(0, 59, 126, 0.14);
+}
+
+table thead tr {
+  background-color: rgba(0, 59, 126, 0.1) !important;
+}
+
+table thead th {
+  font-family: 'Manrope', sans-serif !important;
+  color: #003B7E !important;
+  font-weight: 700 !important;
+  border-bottom: 2px solid rgba(0, 59, 126, 0.18);
+}
+
+table tbody tr:hover {
+  background-color: rgba(0, 137, 203, 0.04);
+}
+
+button {
+  font-family: 'Nunito', sans-serif;
+  transition: transform 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+button:hover {
+  filter: brightness(1.04);
+}
+
+.metro-glass-header {
+  background: linear-gradient(99.79deg, rgba(255, 255, 255, 0.94) 1.95%, rgba(255, 255, 255, 0.82) 96.47%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(209, 213, 219, 0.6);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgba(0, 59, 126, 0.08);
+}
+
+.metro-glass-footer {
+  background: linear-gradient(99.79deg, rgba(255, 255, 255, 0.92) 1.95%, rgba(255, 255, 255, 0.78) 96.47%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid rgba(209, 213, 219, 0.6);
+  box-shadow: 0 -2px 6px -1px rgb(0 0 0 / 0.05);
+}

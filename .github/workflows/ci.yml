@@ -1,0 +1,84 @@
+name: TalentFlow CI — Tests, Lint & Build
+
+on:
+  push:
+    branches: ["main", "feat/**"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: Backend (FastAPI + PostgreSQL + Pytest)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: talentflow
+          POSTGRES_PASSWORD: talentflow_ci_password
+          POSTGRES_DB: talentflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run Ruff Linter
+        run: ruff check app tests
+
+      - name: Run Alembic Migrations against PostgreSQL
+        env:
+          DATABASE_URL: postgresql+psycopg://talentflow:talentflow_ci_password@localhost:5432/talentflow_test
+        run: alembic upgrade head
+
+      - name: Run Pytest Unit, Integration & 17 Acceptance Scenarios
+        env:
+          DATABASE_URL: postgresql+psycopg://talentflow:talentflow_ci_password@localhost:5432/talentflow_test
+          TALENTFLOW_ENV: test
+        run: pytest -v --tb=short
+
+  frontend-tests:
+    name: Frontend (React + TypeScript + Vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: TypeScript Typecheck
+        run: npx tsc --noEmit
+
+      - name: Run Vitest Suite
+        run: npm test -- --run
+
+      - name: Production Bundle Build Check
+        run: npm run build

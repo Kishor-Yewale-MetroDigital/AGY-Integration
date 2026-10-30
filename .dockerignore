@@ -1,0 +1,14 @@
+# Exclude local virtualenvs, node_modules, caches, and local SQLite DBs from Docker context
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/node_modules/
+frontend/dist/
+*.db
+*.sqlite3
+.git/
+.github/
+infra/
+.env
+.env.*

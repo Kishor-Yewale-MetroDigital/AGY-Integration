@@ -1,0 +1,15 @@
+.git
+.gitignore
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/node_modules/
+frontend/dist/
+*.db
+*.sqlite3
+infra/.terraform/
+*.tfstate
+*.tfstate.*
+.env
+.env.*

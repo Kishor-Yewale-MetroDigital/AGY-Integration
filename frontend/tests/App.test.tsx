@@ -48,5 +48,22 @@ describe("TalentFlow Frontend Suite", () => {
     // Navigate to Immutable Audit Log tab
     fireEvent.click(screen.getByText(/Immutable Audit Log/i));
     expect(screen.getByText(/Immutable Governance Audit Log/i)).toBeDefined();
+
+    // Navigate to Administration & Access tab
+    fireEvent.click(screen.getByText(/Administration & Access/i));
+    expect(
+      screen.getByText(
+        /Platform Administration — User Access, Role Rights & Governance Rules/i
+      )
+    ).toBeDefined();
+    expect(
+      screen.getByText(/Add User to Application & Assign Required Rights/i)
+    ).toBeDefined();
+    expect(
+      screen.getByText(/Application User Directory & Live Role \/ Rights Assignment/i)
+    ).toBeDefined();
+    expect(
+      screen.getByText(/Enterprise RBAC & Segregation of Duties \(SoD\) Matrix/i)
+    ).toBeDefined();
   });
 });

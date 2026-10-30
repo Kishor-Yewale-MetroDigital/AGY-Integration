@@ -471,3 +471,111 @@ def test_scenario_19_populate_demo_approval_queue_and_committee_actions(client):
         headers={"X-User-Id": "usr-exec"},
     ).json()
     assert filtered_dash["bigquery_historical_analytics"]["reconciliation"]["is_reconciled"] is True
+
+
+def test_scenario_20_approval_rules_create_idempotent_upsert_patch_and_delete(client):
+    """
+    Scenario 20: Verifies creating an approval rule, re-submitting the same rule_name without
+    IntegrityError (idempotent upsert), toggling active status via PATCH, and deleting via DELETE.
+    """
+    create_res = client.post(
+        "/api/v1/approvals/rules",
+        json={
+            "rule_name": "Executive L7+ Fast-Track Governance",
+            "min_grade": "L7",
+            "min_total_cost": "7500000.00",
+            "requires_manager_review": True,
+            "requires_finance_review": True,
+            "requires_committee_review": True,
+            "sla_hours": 24,
+        },
+        headers={"X-User-Id": "usr-admin"},
+    )
+    assert create_res.status_code == 201, create_res.text
+    created = create_res.json()
+    rule_id = created["id"]
+    assert created["rule_name"] == "Executive L7+ Fast-Track Governance"
+    assert created["min_grade"] == "L7"
+    assert created["requires_finance_review"] is True
+    assert created["sla_hours"] == 24
+
+    # Re-submitting the exact same rule_name updates in place instead of crashing with IntegrityError
+    upsert_res = client.post(
+        "/api/v1/approvals/rules",
+        json={
+            "rule_name": "Executive L7+ Fast-Track Governance",
+            "min_grade": "ANY",
+            "min_total_cost": "5500000.00",
+            "requires_manager_review": True,
+            "requires_finance_review": False,
+            "requires_committee_review": True,
+            "sla_hours": 18,
+        },
+        headers={"X-User-Id": "usr-admin"},
+    )
+    assert upsert_res.status_code == 201, upsert_res.text
+    upserted = upsert_res.json()
+    assert upserted["id"] == rule_id
+    assert upserted["min_grade"] is None
+    assert upserted["requires_finance_review"] is False
+    assert upserted["sla_hours"] == 18
+
+    # Pause and re-enable the rule via PATCH
+    patch_res = client.patch(
+        f"/api/v1/approvals/rules/{rule_id}",
+        json={"is_active": False},
+        headers={"X-User-Id": "usr-admin"},
+    )
+    assert patch_res.status_code == 200
+    assert patch_res.json()["is_active"] is False
+
+    # Delete the custom rule
+    del_res = client.delete(
+        f"/api/v1/approvals/rules/{rule_id}",
+        headers={"X-User-Id": "usr-admin"},
+    )
+    assert del_res.status_code == 200
+    assert del_res.json()["deleted"] is True
+
+
+def test_scenario_21_user_administration_add_user_and_assign_rights(client):
+    """
+    Scenario 21: Verifies adding a new user to the application, assigning and updating their
+    RBAC role/rights, and recording immutable audit events.
+    """
+    create_user_res = client.post(
+        "/api/v1/users",
+        json={
+            "email": "neha.kulkarni@metro-gsc.in",
+            "full_name": "Neha Kulkarni",
+            "role": "FINANCE_REVIEWER",
+            "business_unit": "Digital & Technology",
+            "department_id": "dept-eng",
+            "is_active": True,
+        },
+        headers={"X-User-Id": "usr-admin"},
+    )
+    assert create_user_res.status_code == 201, create_user_res.text
+    new_user = create_user_res.json()
+    user_id = new_user["id"]
+    assert new_user["email"] == "neha.kulkarni@metro-gsc.in"
+    assert new_user["role"] == "FINANCE_REVIEWER"
+    assert new_user["is_active"] is True
+
+    # Re-assign role/rights via PATCH /api/v1/users/{user_id}
+    update_role_res = client.patch(
+        f"/api/v1/users/{user_id}",
+        json={"role": "COMMITTEE_MEMBER"},
+        headers={"X-User-Id": "usr-admin"},
+    )
+    assert update_role_res.status_code == 200
+    assert update_role_res.json()["role"] == "COMMITTEE_MEMBER"
+
+    # Verify audit trail recorded CREATE_USER and UPDATE_USER_RIGHTS
+    audits = client.get(
+        f"/api/v1/audit-events?entity_id={user_id}",
+        headers={"X-User-Id": "usr-admin"},
+    ).json()
+    actions = [a["action"] for a in audits]
+    assert "CREATE_USER" in actions
+    assert "UPDATE_USER_RIGHTS" in actions

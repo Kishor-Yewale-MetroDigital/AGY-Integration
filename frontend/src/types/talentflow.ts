@@ -14,6 +14,7 @@ export interface User {
   role: UserRole;
   business_unit: string;
   department_id: string | null;
+  is_active?: boolean;
 }
 
 export interface Department {
@@ -117,6 +118,7 @@ export interface ApprovalRule {
   requires_finance_review: boolean;
   requires_committee_review: boolean;
   sla_hours: number;
+  is_active?: boolean;
 }
 
 export interface ApprovalDelegation {

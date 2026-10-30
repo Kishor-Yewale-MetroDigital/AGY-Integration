@@ -3,6 +3,8 @@ import {
   createApprovalRule,
   createDelegation,
   createHiringRequest,
+  createUser,
+  deleteApprovalRule,
   fetchApprovalRules,
   fetchAuditEvents,
   fetchDashboardOverview,
@@ -17,7 +19,9 @@ import {
   submitApprovalDecision,
   submitHiringRequest,
   triggerBigQuerySync,
+  updateApprovalRule,
   updateHiringRequest,
+  updateUser,
 } from "./api/client";
 import type {
   ApprovalDelegation,
@@ -25,6 +29,7 @@ import type {
   Department,
   HiringRequest,
   User,
+  UserRole,
 } from "./types/talentflow";
 import { METRO_COLORS } from "./assets/metroBrand";
 import {
@@ -38,6 +43,7 @@ import {
   DashboardTab,
   WorkforceTab,
 } from "./components/DashboardAndWorkforceTabs";
+import { AdminTab } from "./components/AdminTab";
 import { CommitteeQueueTab } from "./components/CommitteeQueueTab";
 import { HiringRequestsTab } from "./components/HiringRequestsTab";
 
@@ -136,6 +142,14 @@ export function App() {
   const [newRuleMinGrade, setNewRuleMinGrade] = useState("L7");
   const [newRuleMinCost, setNewRuleMinCost] = useState("7500000.00");
   const [newRuleSla, setNewRuleSla] = useState(24);
+  const [newRuleFinanceGate, setNewRuleFinanceGate] = useState(true);
+
+  // User Administration Form State
+  const [newUserName, setNewUserName] = useState("Neha Kulkarni");
+  const [newUserEmail, setNewUserEmail] = useState("neha.kulkarni@metro-gsc.in");
+  const [newUserRole, setNewUserRole] = useState<UserRole>("COMMITTEE_MEMBER");
+  const [newUserDeptId, setNewUserDeptId] = useState("dept-eng");
+  const [newUserBusinessUnit, setNewUserBusinessUnit] = useState("Digital & Technology");
 
   async function refreshAll(customDelayDays?: number) {
     setLoading(true);
@@ -534,19 +548,114 @@ export function App() {
     setErrorBanner(null);
     setSuccessBanner(null);
     try {
+      const normalizedGrade =
+        !newRuleMinGrade || newRuleMinGrade.toUpperCase() === "ANY" ? null : newRuleMinGrade;
       const created = await createApprovalRule(
         {
-          rule_name: newRuleName,
-          min_grade: newRuleMinGrade,
-          min_total_cost: newRuleMinCost,
+          rule_name: newRuleName.trim() || `Governance Policy Rule #${rules.length + 1}`,
+          min_grade: normalizedGrade,
+          min_total_cost: newRuleMinCost.trim() || "0.00",
           requires_manager_review: true,
-          requires_finance_review: true,
+          requires_finance_review: newRuleFinanceGate,
           requires_committee_review: true,
-          sla_hours: Number(newRuleSla),
+          sla_hours: Number(newRuleSla) || 24,
         },
         "usr-admin"
       );
-      setSuccessBanner(`Created configurable approval rule: ${created.rule_name}.`);
+      setSuccessBanner(
+        `Saved configurable approval rule: ${created.rule_name} (Min Grade: ${
+          created.min_grade || "Any"
+        }, Finance Gate: ${created.requires_finance_review ? "YES" : "NO"}, SLA: ${
+          created.sla_hours
+        }h).`
+      );
+      await refreshAll();
+    } catch (err) {
+      setErrorBanner(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleToggleRuleActive(rule: ApprovalRule) {
+    setErrorBanner(null);
+    setSuccessBanner(null);
+    try {
+      const nextActive = rule.is_active === false;
+      const updated = await updateApprovalRule(
+        rule.id,
+        { is_active: nextActive },
+        "usr-admin"
+      );
+      setSuccessBanner(
+        `Rule "${updated.rule_name}" is now ${updated.is_active ? "ACTIVE" : "PAUSED"}.`
+      );
+      await refreshAll();
+    } catch (err) {
+      setErrorBanner(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleDeleteRule(ruleId: string) {
+    setErrorBanner(null);
+    setSuccessBanner(null);
+    try {
+      const res = await deleteApprovalRule(ruleId, "usr-admin");
+      setSuccessBanner(`Removed governance approval rule: "${res.rule_name}".`);
+      await refreshAll();
+    } catch (err) {
+      setErrorBanner(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleCreateUser(e: React.FormEvent) {
+    e.preventDefault();
+    setErrorBanner(null);
+    setSuccessBanner(null);
+    try {
+      const created = await createUser(
+        {
+          full_name: newUserName,
+          email: newUserEmail,
+          role: newUserRole,
+          department_id: newUserDeptId || null,
+          business_unit: newUserBusinessUnit,
+          is_active: true,
+        },
+        "usr-admin"
+      );
+      setSuccessBanner(
+        `User "${created.full_name}" (${created.email}) provisioned with role & rights: [${created.role}].`
+      );
+      await refreshAll();
+    } catch (err) {
+      setErrorBanner(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleUpdateUserRole(userId: string, role: UserRole) {
+    setErrorBanner(null);
+    setSuccessBanner(null);
+    try {
+      const updated = await updateUser(userId, { role }, "usr-admin");
+      setSuccessBanner(
+        `Updated role & workflow rights for ${updated.full_name} (${updated.email}) → [${updated.role}].`
+      );
+      await refreshAll();
+    } catch (err) {
+      setErrorBanner(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleToggleUserActive(user: User) {
+    setErrorBanner(null);
+    setSuccessBanner(null);
+    try {
+      const nextActive = user.is_active === false;
+      const updated = await updateUser(user.id, { is_active: nextActive }, "usr-admin");
+      setSuccessBanner(
+        `Account status for ${updated.full_name} (${updated.email}) set to ${
+          updated.is_active ? "ACTIVE" : "SUSPENDED"
+        }.`
+      );
       await refreshAll();
     } catch (err) {
       setErrorBanner(err instanceof Error ? err.message : String(err));
@@ -599,6 +708,7 @@ export function App() {
             ],
             ["workforce", "Workforce & Cost Planning"],
             ["audit", `Immutable Audit Log (${audits.length})`],
+            ["admin", `Administration & Access (${users.length} Users)`],
           ] as Array<[ActiveTab, string]>
         ).map(([key, label]) => (
           <button
@@ -937,7 +1047,11 @@ export function App() {
             onNewRuleMinCostChange={setNewRuleMinCost}
             newRuleSla={newRuleSla}
             onNewRuleSlaChange={setNewRuleSla}
+            newRuleFinanceGate={newRuleFinanceGate}
+            onNewRuleFinanceGateChange={setNewRuleFinanceGate}
             onCreateRule={(e) => void handleCreateRule(e)}
+            onToggleRuleActive={(r) => void handleToggleRuleActive(r)}
+            onDeleteRule={(id) => void handleDeleteRule(id)}
           />
         )}
 
@@ -954,6 +1068,42 @@ export function App() {
         )}
 
         {activeTab === "audit" && <AuditTab audits={audits} />}
+
+        {activeTab === "admin" && (
+          <AdminTab
+            users={users}
+            departments={departments}
+            rules={rules}
+            currentUserId={currentUserId}
+            newUserName={newUserName}
+            onNewUserNameChange={setNewUserName}
+            newUserEmail={newUserEmail}
+            onNewUserEmailChange={setNewUserEmail}
+            newUserRole={newUserRole}
+            onNewUserRoleChange={setNewUserRole}
+            newUserDeptId={newUserDeptId}
+            onNewUserDeptIdChange={setNewUserDeptId}
+            newUserBusinessUnit={newUserBusinessUnit}
+            onNewUserBusinessUnitChange={setNewUserBusinessUnit}
+            onCreateUser={(e) => void handleCreateUser(e)}
+            onUpdateUserRole={(userId, role) => void handleUpdateUserRole(userId, role)}
+            onToggleUserActive={(u) => void handleToggleUserActive(u)}
+            onSelectActingUser={handleUserChange}
+            newRuleName={newRuleName}
+            onNewRuleNameChange={setNewRuleName}
+            newRuleMinGrade={newRuleMinGrade}
+            onNewRuleMinGradeChange={setNewRuleMinGrade}
+            newRuleMinCost={newRuleMinCost}
+            onNewRuleMinCostChange={setNewRuleMinCost}
+            newRuleSla={newRuleSla}
+            onNewRuleSlaChange={setNewRuleSla}
+            newRuleFinanceGate={newRuleFinanceGate}
+            onNewRuleFinanceGateChange={setNewRuleFinanceGate}
+            onCreateRule={(e) => void handleCreateRule(e)}
+            onToggleRuleActive={(r) => void handleToggleRuleActive(r)}
+            onDeleteRule={(id) => void handleDeleteRule(id)}
+          />
+        )}
       </main>
 
       <MetroFooter />

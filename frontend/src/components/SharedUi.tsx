@@ -2,7 +2,7 @@ import React from "react";
 import { METRO_COLORS, METRO_GSC_LOGO_DATA_URL } from "../assets/metroBrand";
 import type { User } from "../types/talentflow";
 
-export type ActiveTab = "dashboard" | "requests" | "committee" | "workforce" | "audit";
+export type ActiveTab = "dashboard" | "requests" | "committee" | "workforce" | "audit" | "admin";
 
 export function formatINR(value: string | number | undefined): string {
   const num = Number(value ?? 0);

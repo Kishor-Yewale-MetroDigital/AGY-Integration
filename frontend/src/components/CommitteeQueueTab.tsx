@@ -36,7 +36,11 @@ export function CommitteeQueueTab({
   onNewRuleMinCostChange,
   newRuleSla,
   onNewRuleSlaChange,
+  newRuleFinanceGate,
+  onNewRuleFinanceGateChange,
   onCreateRule,
+  onToggleRuleActive,
+  onDeleteRule,
 }: {
   queueRequests: HiringRequest[];
   users: User[];
@@ -71,7 +75,11 @@ export function CommitteeQueueTab({
   onNewRuleMinCostChange: (val: string) => void;
   newRuleSla: number;
   onNewRuleSlaChange: (val: number) => void;
+  newRuleFinanceGate: boolean;
+  onNewRuleFinanceGateChange: (val: boolean) => void;
   onCreateRule: (e: React.FormEvent) => void;
+  onToggleRuleActive?: (rule: ApprovalRule) => void;
+  onDeleteRule?: (ruleId: string) => void;
 }) {
   return (
     <section>
@@ -525,7 +533,13 @@ export function CommitteeQueueTab({
           <h3 style={{ marginTop: 0 }}>Configurable Governance & Approval Rules</h3>
           <form
             onSubmit={onCreateRule}
-            style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}
+            style={{
+              display: "flex",
+              gap: "8px",
+              flexWrap: "wrap",
+              alignItems: "center",
+              marginBottom: "12px",
+            }}
           >
             <input
               id="new-rule-name"
@@ -533,12 +547,14 @@ export function CommitteeQueueTab({
               aria-label="Rule Name"
               value={newRuleName}
               onChange={(e) => onNewRuleNameChange(e.target.value)}
-              placeholder="Rule Name"
+              placeholder="Rule Name (e.g. Executive L7+ Fast-Track)"
+              required
               style={{
                 padding: "6px 10px",
                 borderRadius: "6px",
                 border: "1px solid #cbd5e1",
                 flex: 1,
+                minWidth: "180px",
               }}
             />
             <select
@@ -549,6 +565,7 @@ export function CommitteeQueueTab({
               onChange={(e) => onNewRuleMinGradeChange(e.target.value)}
               style={{ padding: "6px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
             >
+              <option value="ANY">Any Grade</option>
               {["L3", "L4", "L5", "L6", "L7", "L8", "EXEC"].map((g) => (
                 <option key={g} value={g}>
                   Min {g}
@@ -574,6 +591,8 @@ export function CommitteeQueueTab({
               name="sla_hours"
               aria-label="SLA Hours"
               type="number"
+              min={1}
+              max={720}
               value={newRuleSla}
               onChange={(e) => onNewRuleSlaChange(Number(e.target.value))}
               style={{
@@ -583,6 +602,27 @@ export function CommitteeQueueTab({
                 width: "65px",
               }}
             />
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "#334155",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                id="new-rule-finance-gate"
+                name="requires_finance_review"
+                aria-label="Require Finance Gate"
+                type="checkbox"
+                checked={newRuleFinanceGate}
+                onChange={(e) => onNewRuleFinanceGateChange(e.target.checked)}
+              />
+              Finance Gate
+            </label>
             <button
               type="submit"
               style={{
@@ -600,10 +640,70 @@ export function CommitteeQueueTab({
           </form>
           <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: "#334155" }}>
             {rules.map((rl) => (
-              <li key={rl.id} style={{ marginBottom: "4px" }}>
-                <strong>{rl.rule_name}</strong> — Min Grade: {rl.min_grade || "Any"}, Min Cost:{" "}
-                {formatINR(rl.min_total_cost)}, Finance Gate:{" "}
-                <strong>{rl.requires_finance_review ? "YES" : "NO"}</strong>, SLA: {rl.sla_hours}h
+              <li
+                key={rl.id}
+                style={{
+                  marginBottom: "6px",
+                  opacity: rl.is_active === false ? 0.55 : 1,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span>
+                    <strong>{rl.rule_name}</strong> — Min Grade: {rl.min_grade || "Any"}, Min Cost:{" "}
+                    {formatINR(rl.min_total_cost)}, Finance Gate:{" "}
+                    <strong>{rl.requires_finance_review ? "YES" : "NO"}</strong>, SLA:{" "}
+                    {rl.sla_hours}h{" "}
+                    {rl.is_active === false && (
+                      <span style={{ color: "#b91c1c", fontWeight: 700 }}>(Paused)</span>
+                    )}
+                  </span>
+                  <span style={{ display: "inline-flex", gap: "6px" }}>
+                    {onToggleRuleActive && (
+                      <button
+                        type="button"
+                        onClick={() => onToggleRuleActive(rl)}
+                        style={{
+                          padding: "2px 8px",
+                          fontSize: "11px",
+                          borderRadius: "4px",
+                          border: "1px solid #cbd5e1",
+                          background: rl.is_active === false ? "#dcfce7" : "#f8fafc",
+                          color: rl.is_active === false ? "#166534" : "#334155",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {rl.is_active === false ? "Enable" : "Pause"}
+                      </button>
+                    )}
+                    {onDeleteRule && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteRule(rl.id)}
+                        style={{
+                          padding: "2px 8px",
+                          fontSize: "11px",
+                          borderRadius: "4px",
+                          border: "1px solid #fecaca",
+                          background: "#fef2f2",
+                          color: "#991b1b",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </span>
+                </div>
               </li>
             ))}
           </ul>

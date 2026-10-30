@@ -71,6 +71,48 @@ export async function fetchUsers(): Promise<User[]> {
   return apiRequest<User[]>("/users");
 }
 
+export async function createUser(
+  payload: {
+    email: string;
+    full_name: string;
+    role: User["role"];
+    business_unit: string;
+    department_id?: string | null;
+    is_active?: boolean;
+  },
+  overrideUserId?: string,
+): Promise<User> {
+  return apiRequest<User>(
+    "/users",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    overrideUserId,
+  );
+}
+
+export async function updateUser(
+  userId: string,
+  payload: {
+    full_name?: string;
+    role?: User["role"];
+    business_unit?: string;
+    department_id?: string | null;
+    is_active?: boolean;
+  },
+  overrideUserId?: string,
+): Promise<User> {
+  return apiRequest<User>(
+    `/users/${userId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+    overrideUserId,
+  );
+}
+
 export async function fetchDepartments(): Promise<Department[]> {
   return apiRequest<Department[]>("/departments");
 }
@@ -178,12 +220,40 @@ export async function fetchApprovalRules(): Promise<ApprovalRule[]> {
 export async function createApprovalRule(
   payload: Record<string, unknown>,
   overrideUserId?: string,
-): Promise<{ id: string; rule_name: string }> {
-  return apiRequest<{ id: string; rule_name: string }>(
+): Promise<ApprovalRule> {
+  return apiRequest<ApprovalRule>(
     "/approvals/rules",
     {
       method: "POST",
       body: JSON.stringify(payload),
+    },
+    overrideUserId,
+  );
+}
+
+export async function updateApprovalRule(
+  ruleId: string,
+  payload: Record<string, unknown>,
+  overrideUserId?: string,
+): Promise<ApprovalRule> {
+  return apiRequest<ApprovalRule>(
+    `/approvals/rules/${ruleId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+    overrideUserId,
+  );
+}
+
+export async function deleteApprovalRule(
+  ruleId: string,
+  overrideUserId?: string,
+): Promise<{ deleted: boolean; id: string; rule_name: string }> {
+  return apiRequest<{ deleted: boolean; id: string; rule_name: string }>(
+    `/approvals/rules/${ruleId}`,
+    {
+      method: "DELETE",
     },
     overrideUserId,
   );

@@ -100,6 +100,96 @@ class ApprovalRuleCreate(BaseModel):
     requires_finance_review: bool = False
     requires_committee_review: bool = True
     sla_hours: int = Field(default=48, ge=1, le=720)
+    is_active: bool = True
+
+    @field_validator("min_grade", "hiring_type", "business_unit", "location_country", mode="before")
+    @classmethod
+    def normalize_optional_filter(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        cleaned = str(v).strip()
+        if not cleaned or cleaned.upper() == "ANY":
+            return None
+        return cleaned
+
+    @field_validator("min_total_cost", mode="before")
+    @classmethod
+    def normalize_min_cost(cls, v: str | float | int | Decimal | None) -> Decimal | str | float | int:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return Decimal("0.00")
+        if isinstance(v, str):
+            return v.replace(",", "").strip()
+        return v
+
+
+class ApprovalRuleUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule_name: str | None = Field(default=None, min_length=3, max_length=128)
+    min_grade: Literal["L3", "L4", "L5", "L6", "L7", "L8", "EXEC"] | None = None
+    min_total_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+    hiring_type: Literal["NEW_HEADCOUNT", "REPLACEMENT"] | None = None
+    business_unit: str | None = None
+    location_country: str | None = None
+    requires_manager_review: bool | None = None
+    requires_finance_review: bool | None = None
+    requires_committee_review: bool | None = None
+    sla_hours: int | None = Field(default=None, ge=1, le=720)
+    is_active: bool | None = None
+
+
+RoleLiteral = Literal[
+    "REQUEST_CREATOR",
+    "HIRING_MANAGER",
+    "HRBP",
+    "FINANCE_REVIEWER",
+    "COMMITTEE_MEMBER",
+    "ADMIN",
+    "EXEC_READONLY",
+]
+
+
+class UserCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(..., min_length=5, max_length=255)
+    full_name: str = Field(..., min_length=2, max_length=128)
+    role: RoleLiteral
+    business_unit: str = Field(default="Digital & Technology", min_length=2, max_length=64)
+    department_id: str | None = None
+    is_active: bool = True
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        cleaned = v.strip().lower()
+        if "@" not in cleaned or "." not in cleaned.split("@")[-1]:
+            raise ValueError("A valid corporate email address is required.")
+        return cleaned
+
+    @field_validator("department_id", mode="before")
+    @classmethod
+    def normalize_empty_department(cls, v: str | None) -> str | None:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        return v.strip()
+
+
+class UserUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str | None = Field(default=None, min_length=2, max_length=128)
+    role: RoleLiteral | None = None
+    business_unit: str | None = Field(default=None, min_length=2, max_length=64)
+    department_id: str | None = None
+    is_active: bool | None = None
+
+    @field_validator("department_id", mode="before")
+    @classmethod
+    def normalize_empty_department(cls, v: str | None) -> str | None:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        return v.strip()
 
 
 class HiringOutcomeCreate(BaseModel):
